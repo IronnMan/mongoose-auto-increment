@@ -3,6 +3,7 @@ var mongoose = require('mongoose'),
 extend = require('extend'),
 counterSchema,
 IdentityCounter;
+var { nanoid, customAlphabet } = require('nanoid');
 
 // Initialize plugin by creating counter collection in database.
 exports.initialize = function (connection) {
@@ -176,3 +177,87 @@ exports.plugin = function (schema, options) {
       next();
   });
 };
+
+exports.nanoidPlugin = function (schema, options) {
+  // If we don't have reference to the counterSchema or the IdentityCounter model then the plugin was most likely not
+  // initialized properly so throw an error.
+  if (!counterSchema || !IdentityCounter) throw new Error("mongoose-auto-increment has not been initialized");
+
+  // Default settings and plugin scope variables.
+  var settings = {
+    model: null, // The model to configure the plugin for.
+    field: '_id', // The field the plugin should track.
+    length: 12, //  Length of ID to be created. Default 12.
+    charset: '', // A list of characters that will be used to created the ID. Default 0-9, a-z, A-Z, - & _.
+    unique: true // Should we create a unique index for the field
+  },
+  fields = {}, // A hash of fields to add properties to in Mongoose.
+  ready = false; // True if the counter collection has been updated and the document is ready to be saved.
+
+  switch (typeof(options)) {
+    // If string, the user chose to pass in just the model name.
+    case 'string':
+      settings.model = options;
+    break;
+    // If object, the user passed in a hash of options.
+    case 'object':
+      extend(settings, options);
+    break;
+  }
+
+  if (settings.model == null)
+    throw new Error("model must be set");
+
+  // Add properties for field in schema.
+  fields[settings.field] = {
+    type: Number,
+    require: true
+  };
+  if (settings.field !== '_id')
+    fields[settings.field].unique = settings.unique
+  schema.add(fields);
+
+  // Declare a function to get the next counter for the model/schema.
+  var nextCount = function (callback) {
+    IdentityCounter.findOne({
+      model: settings.model,
+      field: settings.field
+    }, function (err, counter) {
+      if (err) return callback(err);
+      callback(null, counter === null ? 0 : counter.count + 1);
+    });
+  };
+  // Add nextCount as both a method on documents and a static on the schema for convenience.
+  schema.method('nextCount', nextCount);
+  schema.static('nextCount', nextCount);
+
+  // Every time documents in this schema are saved, run this logic.
+  schema.pre('save', function (next) {
+    // Get reference to the document being saved.
+    var doc = this;
+
+    if (doc.isNew && !this.constructor.$isArraySubdocument) {
+      attemptToGenerate(doc, options)
+        .then(function (newId) {
+          doc[options.field] = newId;
+          next();
+        });
+        
+    } else next();
+
+  });
+};
+
+function generator(options) {
+  return options.charset ? customAlphabet(options.charset, options.length) : nanoid;
+}
+
+function attemptToGenerate(doc, options) {
+  var id = generator(options);
+
+  return doc.constructor.findById(id)
+    .then(function (found) {
+      if (found) return attemptToGenerate(doc, options);
+      return id;
+    });
+}

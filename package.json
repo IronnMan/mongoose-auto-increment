@@ -7,7 +7,8 @@
     "url": "git://github.com/codetunnel/mongoose-auto-increment.git"
   },
   "dependencies": {
-    "extend": "^3.0.0"
+    "extend": "^3.0.0",
+    "nanoid": "^3.3.3"
   },
   "peerDependencies": {
     "mongoose": "^4.1.12"
@@ -15,7 +16,7 @@
   "devDependencies": {
     "async": "*",
     "chai": "*",
-    "mocha": "*",
+    "mocha": "^8.0.0",
     "mongoose": "^4.1.12"
   },
   "keywords": [
@@ -58,7 +59,7 @@
     }
   ],
   "scripts": {
-    "test": "node_modules/mocha/bin/mocha"
+    "test": "./node_modules/.bin/mocha test/*.js -R spec --ui bdd --timeout 5000"
   },
   "bugs": {
     "url": "https://github.com/codetunnel/mongoose-auto-increment/issues"
